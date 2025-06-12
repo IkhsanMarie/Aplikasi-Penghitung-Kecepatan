@@ -1,50 +1,99 @@
 import streamlit as st
-import sympy as sp
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.optimize import linprog
 
-st.title("🚗 Aplikasi Turunan Parsial: Kecepatan Mobil")
+st.set_page_config(page_title="Model Operasional", layout="wide")
+st.title("📊 Aplikasi Model Operasional - Streamlit")
 
-# Variabel simbolik untuk waktu dan jarak
-t, s = sp.symbols('t s')
-fungsi_str = st.text_input("Masukkan fungsi kecepatan v(t, s):", "3*t**2 + 2*s + t*s")
+# Tab menu utama
+tabs = st.tabs([
+    "⚙️ Optimasi Produksi (Linear Programming)",
+    "📦 Model Persediaan (EOQ)",
+    "⏳ Model Antrian (M/M/1)",
+    "📈 Pertumbuhan (Exponential Model)"
+])
 
-try:
-    v = sp.sympify(fungsi_str)
-    vt = sp.diff(v, t)
-    vs = sp.diff(v, s)
+# =====================
+# Tab 1: Linear Programming
+# =====================
+with tabs[0]:
+    st.header("Optimasi Produksi - Linear Programming")
+    
+    st.markdown("Contoh: Maksimalkan Z = c1 * x1 + c2 * x2 dengan batasan linear")
 
-    st.latex(f"v(t, s) = {sp.latex(v)}")
-    st.latex(f"\\frac{{\\partial v}}{{\\partial t}} = {sp.latex(vt)}")
-    st.latex(f"\\frac{{\\partial v}}{{\\partial s}} = {sp.latex(vs)}")
+    c1 = st.number_input("Koefisien x1 (objektif)", value=3.0)
+    c2 = st.number_input("Koefisien x2 (objektif)", value=5.0)
+    
+    A = np.array([[1, 0], [0, 2], [3, 2]])
+    b = np.array([4, 12, 18])
+    c = [-c1, -c2]  # Linprog meminimalkan, jadi ubah tanda
 
-    t0 = st.number_input("Nilai waktu (t₀):", value=1.0)
-    s0 = st.number_input("Nilai jarak (s₀):", value=10.0)
+    if st.button("Hitung Optimasi"):
+        res = linprog(c, A_ub=A, b_ub=b, method='highs')
+        if res.success:
+            st.success(f"Solusi optimal: x1 = {res.x[0]:.2f}, x2 = {res.x[1]:.2f}, Z = {-res.fun:.2f}")
+        else:
+            st.error("Gagal menemukan solusi optimal.")
 
-    v_val = v.subs({t: t0, s: s0})
-    vt_val = vt.subs({t: t0, s: s0})
-    vs_val = vs.subs({t: t0, s: s0})
+# =====================
+# Tab 2: EOQ
+# =====================
+with tabs[1]:
+    st.header("Model Persediaan - Economic Order Quantity (EOQ)")
+    
+    D = st.number_input("Permintaan Tahunan (D)", value=1000.0)
+    S = st.number_input("Biaya Pemesanan (S)", value=50.0)
+    H = st.number_input("Biaya Penyimpanan per unit per tahun (H)", value=2.0)
 
-    st.write("Nilai kecepatan di titik (t₀, s₀):", v_val)
-    st.write("Gradien kecepatan di titik (t₀, s₀):", f"({vt_val}, {vs_val})")
+    if st.button("Hitung EOQ"):
+        eoq = np.sqrt((2 * D * S) / H)
+        st.success(f"EOQ (Jumlah Ekonomis Pembelian): {eoq:.2f} unit")
 
-    st.subheader("📊 Grafik Kecepatan dan Bidang Singgungnya")
+# =====================
+# Tab 3: M/M/1 Queue
+# =====================
+with tabs[2]:
+    st.header("Model Antrian - M/M/1")
 
-    t_vals = np.linspace(t0 - 2, t0 + 2, 50)
-    s_vals = np.linspace(s0 - 5, s0 + 5, 50)
-    T, S = np.meshgrid(t_vals, s_vals)
-    V = sp.lambdify((t, s), v, 'numpy')(T, S)
-    V_tangent = float(v_val) + float(vt_val)*(T - t0) + float(vs_val)*(S - s0)
+    lam = st.number_input("Laju Kedatangan (λ)", value=2.0)
+    mu = st.number_input("Laju Pelayanan (μ)", value=5.0)
 
-    fig = plt.figure(figsize=(10, 6))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(T, S, V, alpha=0.7, cmap='viridis')
-    ax.plot_surface(T, S, V_tangent, alpha=0.5, color='red')
-    ax.set_title("Permukaan Kecepatan v(t, s) dan bidang singgungnya")
-    ax.set_xlabel('t (waktu)')
-    ax.set_ylabel('s (jarak)')
-    ax.set_zlabel('v (kecepatan)')
-    st.pyplot(fig)
+    if st.button("Hitung Antrian M/M/1"):
+        if lam < mu:
+            rho = lam / mu
+            L = rho / (1 - rho)
+            Lq = rho**2 / (1 - rho)
+            W = 1 / (mu - lam)
+            Wq = rho / (mu - lam)
+            st.success(f"ρ (utilisasi): {rho:.2f}")
+            st.write(f"Jumlah rata-rata dalam sistem (L): {L:.2f}")
+            st.write(f"Jumlah rata-rata dalam antrian (Lq): {Lq:.2f}")
+            st.write(f"Waktu rata-rata dalam sistem (W): {W:.2f}")
+            st.write(f"Waktu rata-rata dalam antrian (Wq): {Wq:.2f}")
+        else:
+            st.error("Sistem tidak stabil (λ harus lebih kecil dari μ)")
 
-except Exception as e:
-    st.error(f"Terjadi kesalahan: {e}")
+# =====================
+# Tab 4: Exponential Growth Model
+# =====================
+with tabs[3]:
+    st.header("Pertumbuhan Eksponensial")
+
+    P0 = st.number_input("Populasi awal (P₀)", value=100.0)
+    r = st.number_input("Tingkat Pertumbuhan (r)", value=0.05)
+    t = st.slider("Waktu (tahun)", min_value=1, max_value=50, value=10)
+
+    if st.button("Hitung Pertumbuhan"):
+        time = np.linspace(0, t, 100)
+        Pt = P0 * np.exp(r * time)
+
+        fig, ax = plt.subplots()
+        ax.plot(time, Pt, label="P(t)")
+        ax.set_title("Model Pertumbuhan Eksponensial")
+        ax.set_xlabel("Tahun")
+        ax.set_ylabel("Populasi")
+        ax.grid(True)
+        st.pyplot(fig)
+
+        st.success(f"Populasi pada t={t} tahun: {P0 * np.exp(r * t):.2f}")
